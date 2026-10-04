@@ -1,6 +1,15 @@
-#include <unistd.h>
+#include <stdint.h>
+#include <stdbool.h>
+
 #include <stdlib.h>
+#include <unistd.h>
 #include <fcntl.h>
+
+static int my_strlen(const char *s) {
+    int n = 0;
+    while (s[n]) ++n;
+    return n;
+}
 
 static void write_int(int fd, long x) {
     char tmp[32];
@@ -11,10 +20,8 @@ static void write_int(int fd, long x) {
         write(fd, "0", 1);
         return;
     }
-    if (x < 0) {
-        neg = 1;
-        x = -x;
-    }
+    if (x < 0) { neg = 1; x = -x; }
+
     while (x > 0) {
         tmp[i++] = '0' + (x % 10);
         x /= 10;
@@ -29,7 +36,13 @@ static void write_int(int fd, long x) {
     write(fd, tmp, i);
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
+    pid_t pid = getpid();
+    (void)pid;
+
     char fname[256];
     int i = 0;
     char c;
@@ -42,14 +55,14 @@ int main(void) {
     fname[i] = '\0';
 
     if (i == 0) {
-        const char msg[] = "child: empty filename\n";
+        const char msg[] = "error: empty filename\n";
         write(STDERR_FILENO, msg, sizeof(msg) - 1);
         exit(EXIT_FAILURE);
     }
 
-    int fd = open(fname, O_WRONLY | O_CREAT | O_TRUNC, 0600);
-    if (fd == -1) {
-        const char msg[] = "child: open failed\n";
+    int32_t file = open(fname, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (file == -1) {
+        const char msg[] = "error: failed to open requested file\n";
         write(STDERR_FILENO, msg, sizeof(msg) - 1);
         exit(EXIT_FAILURE);
     }
@@ -57,37 +70,47 @@ int main(void) {
     long sum = 0;
     long val = 0;
     int sign = 1;
-    int in_num = 0;
+    int num = 0;
 
-    char buf[256];
-    ssize_t n;
-    while ((n = read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
-        for (ssize_t k = 0; k < n; ++k) {
+    char buf[4096];
+    ssize_t bytes;
+    while ((bytes = read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
+        for (ssize_t k = 0; k < bytes; ++k) {
             char ch = buf[k];
 
             if (ch == '-') {
                 sign = -1;
-                in_num = 1;
+                num = 1;
             } else if (ch >= '0' && ch <= '9') {
                 val = val * 10 + (ch - '0');
-                in_num = 1;
+                num = 1;
             } else {
-                if (in_num) {
+                if (num) {
                     sum += sign * val;
                     val = 0;
                     sign = 1;
-                    in_num = 0;
+                    num = 0;
                 }
             }
         }
     }
-    if (in_num) {
+
+    if (bytes < 0) {
+        const char msg[] = "error: failed to read from stdin\n";
+        write(STDERR_FILENO, msg, sizeof(msg) - 1);
+        exit(EXIT_FAILURE);
+    }
+
+    if (num) {
         sum += sign * val;
     }
 
-    write_int(fd, sum);
-    write(fd, "\n", 1);
+    write_int(file, sum);
+    write(file, "\n", 1);
 
-    close(fd);
+    close(file);
+
+    (void)my_strlen;
+
     return 0;
 }
